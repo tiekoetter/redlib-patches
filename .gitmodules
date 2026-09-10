@@ -1,0 +1,4 @@
+[submodule "redlib"]
+	path = redlib
+	url = https://github.com/redlib-org/redlib.git
+	branch = main
