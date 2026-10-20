@@ -13,6 +13,9 @@ Images built by GitHub Actions are published to
 - Resolve `www.reddit.com` through `dualstack.reddit.map.fastly.net`. The URL,
   TLS server name, and HTTP Host header remain `www.reddit.com`, while the
   Fastly alias supplies IPv4 and IPv6 destinations for outbound proxy routing.
+- Restore thread and comment pages for anonymous clients by percent-encoding
+  the comments-route separator in outbound Reddit requests. Both scoped
+  `/r/<subreddit>/comments/...` and short `/comments/...` routes are covered.
 
 ## Clone and build
 
