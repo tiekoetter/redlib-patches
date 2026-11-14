@@ -2,3 +2,7 @@
 	path = redlib
 	url = https://github.com/redlib-org/redlib.git
 	branch = main
+[submodule "redlib-nachtalb"]
+	path = redlib-nachtalb
+	url = https://github.com/Nachtalb/redlib.git
+	branch = main

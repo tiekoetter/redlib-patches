@@ -1,4 +1,4 @@
-name: Update Redlib submodule
+name: Update Redlib submodules
 
 on:
   workflow_dispatch:
@@ -11,12 +11,12 @@ permissions:
   statuses: write
 
 concurrency:
-  group: update-redlib-submodule
+  group: update-redlib-submodules
   cancel-in-progress: false
 
 jobs:
   update:
-    name: Update submodule pointer
+    name: Update submodule pointers
     runs-on: ubuntu-latest
 
     steps:
@@ -25,7 +25,7 @@ jobs:
         with:
           submodules: true
 
-      - name: Update Redlib
+      - name: Update Redlib submodules
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -33,27 +33,28 @@ jobs:
 
           branch="update/redlib"
 
-          git submodule sync -- redlib
-          git submodule update --init --remote -- redlib
+          git submodule sync -- redlib redlib-nachtalb
+          git submodule update --init --remote -- redlib redlib-nachtalb
 
-          if git diff --quiet --exit-code -- redlib; then
-            echo "Redlib is already up to date."
+          if git diff --quiet --exit-code -- redlib redlib-nachtalb; then
+            echo "Both Redlib submodules are already up to date."
             exit 0
           fi
 
-          short_sha="$(git -C redlib rev-parse --short HEAD)"
+          redlib_sha="$(git -C redlib rev-parse --short HEAD)"
+          fork_sha="$(git -C redlib-nachtalb rev-parse --short HEAD)"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "${branch}"
-          git add redlib
-          git commit -m "Update Redlib submodule to ${short_sha}"
+          git add redlib redlib-nachtalb
+          git commit -m "Update Redlib submodules to ${redlib_sha} and ${fork_sha}"
           pr_head_sha="$(git rev-parse HEAD)"
           git fetch origin "${branch}:refs/remotes/origin/${branch}" || true
           git push --force-with-lease origin "${branch}"
 
-          title="Update Redlib submodule"
-          body="Updates the Redlib submodule pointer to ${short_sha}."
+          title="Update Redlib submodules"
+          body="Updates the Redlib submodule pointers to \`${redlib_sha}\` and \`${fork_sha}\`."
           pr_number="$(gh pr list \
             --state open \
             --head "${branch}" \
@@ -75,19 +76,22 @@ jobs:
           if ! ./scripts/apply-patches.sh; then
             patch_status=failure
           fi
+          if ! ./scripts/apply-patches.sh redlib-nachtalb patches-nachtalb; then
+            patch_status=failure
+          fi
 
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [[ "${patch_status}" == success ]]; then
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${pr_head_sha}" \
               -f state=success \
               -f context="Patch integration" \
-              -f description="Patches apply to the updated Redlib commit." \
+              -f description="Patch series apply to the updated Redlib commits." \
               -f target_url="${target_url}"
           else
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${pr_head_sha}" \
               -f state=failure \
               -f context="Patch integration" \
-              -f description="Patches need to be rebased for this Redlib update." \
+              -f description="Patch series need to be rebased for this Redlib update." \
               -f target_url="${target_url}"
             exit 1
           fi

@@ -1,0 +1,59 @@
+From aa53642585e05662bf38a11c5e476c79a3491587 Mon Sep 17 00:00:00 2001
+From: redlib-patches <redlib-patches@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 18:33:07 +0100
+Subject: [PATCH] feat: resolve Reddit through Fastly dual-stack
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ src/client.rs | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/src/client.rs b/src/client.rs
+index fbb508d..374a053 100644
+--- a/src/client.rs
++++ b/src/client.rs
+@@ -31,6 +31,7 @@ const REDDIT_SHORT_URL_BASE_HOST: &str = "redd.it";
+ 
+ pub(crate) const ALTERNATIVE_REDDIT_URL_BASE: &str = "https://www.reddit.com";
+ const ALTERNATIVE_REDDIT_URL_BASE_HOST: &str = "www.reddit.com";
++const ALTERNATIVE_REDDIT_DNS_HOST: &str = "dualstack.reddit.map.fastly.net";
+ 
+ /// Configuration variable holding the `Cookie` header of a logged-in
+ /// reddit.com session.
+@@ -285,10 +286,18 @@ pub static IPV6_ONLY: AtomicBool = AtomicBool::new(false);
+ /// only, unless Redlib runs IPv6-only or there is no IPv4 address.
+ struct RedgifsIpv4Resolver;
+ 
++fn reddit_dns_name(name: &str) -> &str {
++	if name.eq_ignore_ascii_case(ALTERNATIVE_REDDIT_URL_BASE_HOST) {
++		ALTERNATIVE_REDDIT_DNS_HOST
++	} else {
++		name
++	}
++}
++
+ impl Resolve for RedgifsIpv4Resolver {
+ 	fn resolve(&self, name: Name) -> Resolving {
+ 		let pin = !IPV6_ONLY.load(Ordering::Relaxed) && crate::redgifs::is_redgifs_domain(name.as_str());
+-		let host = name.as_str().to_owned();
++		let host = reddit_dns_name(name.as_str()).to_owned();
+ 		Box::pin(async move {
+ 			let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0)).await?.collect();
+ 			Ok(Box::new(if pin { prefer_ipv4(addrs) } else { addrs }.into_iter()) as Addrs)
+@@ -759,6 +768,13 @@ mod tests {
+ 	use super::*;
+ 	use {crate::config::get_setting, sealed_test::prelude::*};
+ 
++	#[test]
++	fn test_reddit_dns_name_uses_fastly_dualstack_alias() {
++		assert_eq!(reddit_dns_name("www.reddit.com"), ALTERNATIVE_REDDIT_DNS_HOST);
++		assert_eq!(reddit_dns_name("WWW.REDDIT.COM"), ALTERNATIVE_REDDIT_DNS_HOST);
++		assert_eq!(reddit_dns_name("oauth.reddit.com"), "oauth.reddit.com");
++	}
++
+ 	#[test]
+ 	fn test_session_tokens_leave_the_anonymous_device_out() {
+ 		let anonymous = std::collections::HashMap::from([
+-- 
+2.56.0
+
