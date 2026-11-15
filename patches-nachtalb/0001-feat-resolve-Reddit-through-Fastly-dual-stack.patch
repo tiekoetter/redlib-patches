@@ -1,6 +1,6 @@
-From aa53642585e05662bf38a11c5e476c79a3491587 Mon Sep 17 00:00:00 2001
+From 427f0d63f9fafed165ee530505f585a72549a6e6 Mon Sep 17 00:00:00 2001
 From: redlib-patches <redlib-patches@users.noreply.github.com>
-Date: Sat, 14 Nov 2026 18:33:07 +0100
+Date: Sun, 15 Nov 2026 14:39:32 +0000
 Subject: [PATCH] feat: resolve Reddit through Fastly dual-stack
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -9,10 +9,10 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
  1 file changed, 17 insertions(+), 1 deletion(-)
 
 diff --git a/src/client.rs b/src/client.rs
-index fbb508d..374a053 100644
+index b7220ca..0bd8268 100644
 --- a/src/client.rs
 +++ b/src/client.rs
-@@ -31,6 +31,7 @@ const REDDIT_SHORT_URL_BASE_HOST: &str = "redd.it";
+@@ -32,6 +32,7 @@ const REDDIT_SHORT_URL_BASE_HOST: &str = "redd.it";
  
  pub(crate) const ALTERNATIVE_REDDIT_URL_BASE: &str = "https://www.reddit.com";
  const ALTERNATIVE_REDDIT_URL_BASE_HOST: &str = "www.reddit.com";
@@ -20,7 +20,7 @@ index fbb508d..374a053 100644
  
  /// Configuration variable holding the `Cookie` header of a logged-in
  /// reddit.com session.
-@@ -285,10 +286,18 @@ pub static IPV6_ONLY: AtomicBool = AtomicBool::new(false);
+@@ -304,10 +305,18 @@ pub static IPV6_ONLY: AtomicBool = AtomicBool::new(false);
  /// only, unless Redlib runs IPv6-only or there is no IPv4 address.
  struct RedgifsIpv4Resolver;
  
@@ -40,9 +40,9 @@ index fbb508d..374a053 100644
  		Box::pin(async move {
  			let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0)).await?.collect();
  			Ok(Box::new(if pin { prefer_ipv4(addrs) } else { addrs }.into_iter()) as Addrs)
-@@ -759,6 +768,13 @@ mod tests {
- 	use super::*;
- 	use {crate::config::get_setting, sealed_test::prelude::*};
+@@ -798,6 +807,13 @@ grOg7/TIT6QE0pDX4NMn6NqkAiARp8TS/g6Pmz3BaKRf5UH/7ifLPrQ9z+rk+LT3\n\
+ 		assert!(ca_store(b"-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n").is_err());
+ 	}
  
 +	#[test]
 +	fn test_reddit_dns_name_uses_fastly_dualstack_alias() {
@@ -55,5 +55,5 @@ index fbb508d..374a053 100644
  	fn test_session_tokens_leave_the_anonymous_device_out() {
  		let anonymous = std::collections::HashMap::from([
 -- 
-2.56.0
+2.56.1
 
