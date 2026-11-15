@@ -1,6 +1,6 @@
-From 585c5d023f61f597b203fb9b100fa1dfc7e7d828 Mon Sep 17 00:00:00 2001
+From 427f0d63f9fafed165ee530505f585a72549a6e6 Mon Sep 17 00:00:00 2001
 From: redlib-patches <redlib-patches@users.noreply.github.com>
-Date: Sat, 14 Nov 2026 18:33:07 +0100
+Date: Sun, 15 Nov 2026 14:39:32 +0000
 Subject: [PATCH] feat: resolve Reddit through Fastly dual-stack
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
@@ -51,7 +51,9 @@ index b7220ca..0bd8268 100644
 +		assert_eq!(reddit_dns_name("oauth.reddit.com"), "oauth.reddit.com");
 +	}
 +
+ 	#[test]
  	fn test_session_tokens_leave_the_anonymous_device_out() {
  		let anonymous = std::collections::HashMap::from([
- -- 
-2.51.1
+-- 
+2.56.1
+
