@@ -2,6 +2,20 @@ name: Build and publish Docker image
 
 on:
   workflow_dispatch:
+    inputs:
+      fork:
+        description: Fork to build
+        type: choice
+        options:
+          - all
+          - redlib
+          - nachtalb
+          - mv12star
+        default: all
+      publish:
+        description: Publish images
+        type: boolean
+        default: true
   pull_request:
     branches:
       - main
@@ -23,15 +37,56 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  changes:
+    name: Select builds
+    runs-on: ubuntu-latest
+    outputs:
+      redlib: ${{ steps.select.outputs.redlib }}
+      nachtalb: ${{ steps.select.outputs.nachtalb }}
+      mv12star: ${{ steps.select.outputs.mv12star }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          FORK: ${{ inputs.fork }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == workflow_dispatch ]]; then
+            for fork in redlib nachtalb mv12star; do
+              if [[ "${FORK}" == all || "${FORK}" == "${fork}" ]]; then
+                echo "${fork}=true" >> "${GITHUB_OUTPUT}"
+              else
+                echo "${fork}=false" >> "${GITHUB_OUTPUT}"
+              fi
+            done
+          elif [[ "${REF_TYPE}" == tag || "${PUSH_BEFORE}" == 0000000000000000000000000000000000000000 ]]; then
+            printf 'redlib=true\nnachtalb=true\nmv12star=true\n' >> "${GITHUB_OUTPUT}"
+          else
+            base="${PR_BASE:-${PUSH_BEFORE}}"
+            git cat-file -e "${base}^{commit}" || git fetch --no-tags origin "${base}"
+            ./scripts/select-builds.sh "${base}" "${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
+
   build:
     name: Build and publish
+    needs: changes
+    if: needs.changes.outputs.redlib == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Initialize Redlib
+        run: git submodule update --init --recursive -- redlib
 
       - name: Apply patches
         run: ./scripts/apply-patches.sh
@@ -40,7 +95,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish)
         uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
@@ -64,7 +119,7 @@ jobs:
           context: redlib
           file: redlib/Dockerfile.alpine
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -72,13 +127,18 @@ jobs:
 
   build-nachtalb:
     name: Build and publish Nachtalb
+    needs: changes
+    if: needs.changes.outputs.nachtalb == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Initialize Nachtalb
+        run: git submodule update --init --recursive -- redlib-nachtalb
 
       - name: Apply Nachtalb patches
         run: ./scripts/apply-patches.sh redlib-nachtalb patches-nachtalb
@@ -87,7 +147,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish)
         uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
@@ -111,8 +171,58 @@ jobs:
           context: redlib-nachtalb
           file: redlib-nachtalb/Dockerfile.distroless
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=nachtalb
           cache-to: type=gha,scope=nachtalb,mode=max
+
+  build-mv12star:
+    name: Build and publish mv12star
+    needs: changes
+    if: needs.changes.outputs.mv12star == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Initialize mv12star
+        run: git submodule update --init --recursive -- redlib-mv12star
+
+      - name: Apply mv12star patches
+        run: ./scripts/apply-patches.sh redlib-mv12star patches-mv12star
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish)
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract mv12star Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch,suffix=-mv12star
+            type=ref,event=tag,suffix=-mv12star
+            type=sha,prefix=sha-,suffix=-mv12star
+            type=raw,value=mv12star,enable={{is_default_branch}}
+
+      - name: Build and publish mv12star Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: redlib-mv12star
+          file: redlib-mv12star/Dockerfile.distroless
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=mv12star
+          cache-to: type=gha,scope=mv12star,mode=max

@@ -9,6 +9,7 @@ permissions:
   contents: write
   pull-requests: write
   statuses: write
+  actions: write
 
 concurrency:
   group: update-redlib-submodules
@@ -16,67 +17,80 @@ concurrency:
 
 jobs:
   update:
-    name: Update submodule pointers
+    name: Update ${{ matrix.submodule }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - submodule: redlib
+            patches: patches
+            fork: redlib
+          - submodule: redlib-nachtalb
+            patches: patches-nachtalb
+            fork: nachtalb
+          - submodule: redlib-mv12star
+            patches: patches-mv12star
+            fork: mv12star
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          submodules: true
 
-      - name: Update Redlib submodules
+      - name: Update submodule
         env:
           GH_TOKEN: ${{ github.token }}
+          SUBMODULE: ${{ matrix.submodule }}
+          PATCHES: ${{ matrix.patches }}
+          FORK: ${{ matrix.fork }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
-          branch="update/redlib"
+          branch="update/${SUBMODULE}"
 
-          git submodule sync -- redlib redlib-nachtalb
-          git submodule update --init --remote -- redlib redlib-nachtalb
+          git submodule sync -- "${SUBMODULE}"
+          git submodule update --init --remote -- "${SUBMODULE}"
+          pr_number="$(gh pr list \
+            --state open \
+            --head "${branch}" \
+            --base "${DEFAULT_BRANCH}" \
+            --json number \
+            --jq '.[0].number // empty')"
 
-          if git diff --quiet --exit-code -- redlib redlib-nachtalb; then
-            echo "Both Redlib submodules are already up to date."
+          if git diff --quiet --exit-code -- "${SUBMODULE}"; then
+            echo "${SUBMODULE} is already up to date."
+            if [[ -n "${pr_number}" ]]; then
+              gh pr close "${pr_number}" --comment "The upstream branch matches the pinned submodule again."
+            fi
             exit 0
           fi
 
-          redlib_sha="$(git -C redlib rev-parse --short HEAD)"
-          fork_sha="$(git -C redlib-nachtalb rev-parse --short HEAD)"
+          submodule_sha="$(git -C "${SUBMODULE}" rev-parse --short HEAD)"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C "${branch}"
-          git add redlib redlib-nachtalb
-          git commit -m "Update Redlib submodules to ${redlib_sha} and ${fork_sha}"
+          git add "${SUBMODULE}"
+          git commit -m "Update ${SUBMODULE} to ${submodule_sha}"
           pr_head_sha="$(git rev-parse HEAD)"
-          git fetch origin "${branch}:refs/remotes/origin/${branch}" || true
-          git push --force-with-lease origin "${branch}"
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${branch}" | cut -f1)"
+          git push --force-with-lease="refs/heads/${branch}:${remote_sha}" origin "${branch}"
 
-          title="Update Redlib submodules"
-          body="Updates the Redlib submodule pointers to \`${redlib_sha}\` and \`${fork_sha}\`."
-          pr_number="$(gh pr list \
-            --state open \
-            --head "${branch}" \
-            --base "${{ github.event.repository.default_branch }}" \
-            --json number \
-            --jq '.[0].number // empty')"
-
+          title="Update ${SUBMODULE}"
+          body="Updates the ${SUBMODULE} submodule pointer to \`${submodule_sha}\`."
           if [[ -n "${pr_number}" ]]; then
             gh pr edit "${pr_number}" --title "${title}" --body "${body}"
           else
             gh pr create \
-              --base "${{ github.event.repository.default_branch }}" \
+              --base "${DEFAULT_BRANCH}" \
               --head "${branch}" \
               --title "${title}" \
               --body "${body}"
           fi
 
           patch_status=success
-          if ! ./scripts/apply-patches.sh; then
-            patch_status=failure
-          fi
-          if ! ./scripts/apply-patches.sh redlib-nachtalb patches-nachtalb; then
+          if ! ./scripts/apply-patches.sh "${SUBMODULE}" "${PATCHES}"; then
             patch_status=failure
           fi
 
@@ -85,13 +99,14 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${pr_head_sha}" \
               -f state=success \
               -f context="Patch integration" \
-              -f description="Patch series apply to the updated Redlib commits." \
+              -f description="Patch series applies to the updated ${SUBMODULE} commit." \
               -f target_url="${target_url}"
+            gh workflow run build.yml --ref "${branch}" -f fork="${FORK}" -f publish=false
           else
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${pr_head_sha}" \
               -f state=failure \
               -f context="Patch integration" \
-              -f description="Patch series need to be rebased for this Redlib update." \
+              -f description="Patch series needs to be rebased for this ${SUBMODULE} update." \
               -f target_url="${target_url}"
             exit 1
           fi

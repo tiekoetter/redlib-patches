@@ -6,3 +6,7 @@
 	path = redlib-nachtalb
 	url = https://github.com/Nachtalb/redlib.git
 	branch = main
+[submodule "redlib-mv12star"]
+	path = redlib-mv12star
+	url = https://codeberg.org/mv12star/redlib.git
+	branch = nachtalb
